@@ -1,0 +1,270 @@
+import React from 'react'
+import App from 'next/app'
+import Head from 'next/head'
+import NextRouter from 'next/router'
+
+import { Provider } from 'react-redux'
+import withRedux from 'next-redux-wrapper'
+import makeStore from '../store'
+
+import { ThemeProvider } from 'styled-components'
+import NProgress from 'nprogress'
+import CONFIG_STYLE from '@components/style/config'
+import GlobalStyle from '@components/style/global'
+import TypoStyle from '@components/style/typo'
+import ModalStyle from '@components/style/modal'
+import OverlayStyle from '@components/style/overlay'
+import LoadingStyle from '@components/style/loading'
+import IconStyle from '@components/elements/icons/css'
+import Layout from '@components/layouts'
+import ServiceWorker from '@components/utils/service-worker/installed'
+import { LoadingStart, LoadingStop } from '@components/elements/loading'
+import { PersistGate } from 'redux-persist/integration/react'
+import Loading from '@components/elements/loading'
+import { CONFIG_NEXT } from '@root/config/config'
+import { requestUserInfoStart, requestSetUserInfo } from '@store/actions'
+import axios from 'axios'
+import { i18n, appWithTranslation } from '@root/i18n'
+import { subDirectory } from '@root/config/config'
+import '@root/utils/analytics'
+import { setPage } from '@root/utils/analytics'
+import "react-datepicker/dist/react-datepicker.css";
+import TagManager from 'react-gtm-module'
+// import io from 'socket.io-client';
+
+if (process.env.NODE_ENV === 'production') {
+	console.log = function () { }
+	console.info = function () { }
+}
+
+NProgress.configure({ showSpinner: false, trickleRate: 0.02, trickleSpeed: 300 })
+
+NextRouter.onRouteChangeStart = (url) => {
+	console.log('NextRouter: onRouteChangeStart', url)
+	// console.log(url)
+	// LoadingStart()
+	NProgress.start()
+}
+NextRouter.onRouteChangeComplete = (url) => {
+	console.log('NextRouter: onRouteChangeComplete', url)
+	// LoadingStop()
+	NProgress.done()
+	// setTimeout(NProgress.done, 1000)
+}
+NextRouter.onRouteChangeError = (err, url) => {
+	console.log('NextRouter: onRouteChangeError', url, err)
+	// LoadingStop()
+	NProgress.done()
+	// setTimeout(NProgress.done, 1000)
+}
+NextRouter.beforeHistoryChange = (url) => {
+	console.log('NextRouter: beforeHistoryChange', url)
+}
+NextRouter.hashChangeStart = (url) => {
+	console.log('NextRouter: hashChangeStart', url)
+}
+NextRouter.hashChangeComplete = (url) => {
+	console.log('NextRouter: hashChangeComplete', url)
+}
+
+class MyApp extends App {
+
+	static async getInitialProps({ Component, ctx }) {
+		try {
+			const { store, isServer, query, req } = ctx
+			// console.log('req',req);
+			let userInfo
+			let lang
+			let nowUrl
+			if (isServer) {
+				userInfo = { user: null, isAuthenticated: false }
+				const { isAuthenticated, passport } = req.session
+
+				if (req.session.hasOwnProperty('passport')) {
+					userInfo.user = (passport || {}).user
+
+					if (Boolean(userInfo.user)) {
+						userInfo.isAuthenticated = true
+					}
+				}
+
+				lang = req.language
+				nowUrl = req.headers.referer
+			}
+			const json = await axios.get(`${process.env.BACKEND_ENDPOINT}/api/v2/setting/seo`)
+			return {
+				pageProps: Component.getInitialProps ? await Component.getInitialProps(ctx) : {},
+				user: userInfo,
+				seo: json.data.data,
+				language: lang,
+				isUrl: nowUrl
+			}
+		} catch (e) {
+			console.log('error', e)
+		}
+	}
+
+	logVisitor = async () => {
+		const host = window.location.host
+		const url_pathname = decodeURI(window.location.pathname)
+		const url_query_string = decodeURI(window.location.search)
+		const dataPages = this.props.pageProps.dataPages || null
+		const detail = this.props.pageProps.detail || null
+		let url_title = '', personal_tag = ''
+
+		// Main pages
+		if (dataPages) {
+			url_title = dataPages && dataPages.title_th || ''
+		} else {
+			url_title = detail && detail.title_th || ''
+			personal_tag = detail && detail.keyword_tag || ''
+		}
+
+		setPage({ url_pathname, url_title, url_query_string, personal_tag })
+
+		// console.log({ url_pathname, url_title, url_query_string, personal_tag });
+
+
+		// Forced Logout ==============================================================================================
+
+		// try {
+		//   let resData = await axios.post(`${window.location.origin}/api/v1/Backend/CheckLogin`,
+		//     {},
+		//     {
+		//       headers: { 'Authorization': `Bearer ${token}`, },
+		//     })
+
+		// } catch (error) {
+
+		//   const { data } = (error || {}).response;
+		//   const { data: responseData } = ((data || {}).response || {});
+		//   const { statusCode, code } = responseData || {};
+
+		//   console.log('resData', { statusCode, code })
+
+		//   if (statusCode === 401 && code === "10005") {
+
+		//     const { isDialogForcedLogoutActive } = this.state;
+
+		//     if ((!['/login', '/logout'].includes(window.location.pathname)))
+		//       this.setState({ isDialogForcedLogoutActive: true })
+
+		//   }
+
+		// }
+
+		// Forced Logout ==============================================================================================
+
+	}
+
+	async componentDidMount() {
+
+		const tagManagerArgs = {
+			gtmId: 'GTM-PZZNN7T'
+		}
+		
+		// const socket = io(`http://localhost:3001`)
+		// socket.on('comment', (data) => {
+		// 	console.log('comment', data)
+		// 	alert('kkkk')
+		// })
+		// const socket = io(`http://localhost:3002`)
+		// socket.on('comment', (data) => {
+		// 	console.log('comment', data)
+		// 	alert('kkkk')
+		// })
+
+
+		TagManager.initialize(tagManagerArgs);
+		console.log('componentDidMount :: ', this.props)
+		const { store, user } = this.props
+		store.dispatch(requestSetUserInfo({ user }))
+
+		if (!process.env.isDev) {
+			ServiceWorker()
+		}
+		this.logVisitor()
+
+	}
+
+	onRouteChangeComplete = () => {
+		this.logVisitor()
+	}
+
+	getLayoutClass = (router) => {
+		return ''
+	}
+
+	render() {
+		const { Component, pageProps, router, store, user, seo, language, isUrl } = this.props
+		const ComponentToRender = (user || {}).isAuthenticated ? Component : <div />;
+		const lang = language || i18n.language
+		return (
+			<Provider store={store}>
+				<ThemeProvider theme={CONFIG_STYLE}>
+					<GlobalStyle />
+					<TypoStyle />
+					<ModalStyle />
+					<OverlayStyle />
+					<IconStyle />
+					<LoadingStyle />
+					<Head>
+						<title>{seo.title[lang]}</title>
+						{/* PWA */}
+						<link rel="manifest" href={`${subDirectory}/manifest.json`} />
+						<meta name="theme-color" content="#317EFB" />
+						<meta name="mobile-web-app-capable" content="yes" />
+						<meta name="apple-mobile-web-app-capable" content="yes" />
+						<meta name="application-name" content={seo.title[lang]} />
+						<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+						<meta name="apple-mobile-web-app-title" content={seo.title[lang]} />
+
+						{/* OPENGRAPH */}
+						<meta property="og:site_name" content={seo.title[lang]} />
+						<meta property="og:title" content={seo.fb_title[lang]} />
+						<meta property="og:description" content={seo.fb_description[lang]} />
+						<meta property="og:type" content={seo.fb_type} />
+						<meta property="og:url" content={isUrl} />
+						<meta property="og:image" content={seo.fb_image} />
+						<meta property="NODE_CONFIG" content={process.env.NODE_CONFIG} />
+
+						{/* twitter */}
+						<meta name="twitter:card" content={seo.tw_card} />
+						<meta name="twitter:site" content={seo.tw_site} />
+						<meta name="twitter:title" content={seo.tw_title[lang]} />
+						<meta name="twitter:description" content={seo.tw_description[lang]} />
+						<meta name="twitter:image" content={seo.tw_image} />
+					</Head>
+					<Layout className={this.getLayoutClass(router)}>
+						<PersistGate
+							persistor={store.__persistor}
+							loading={
+								<div
+									style={{
+										display: 'flex',
+										justifyContent: 'center',
+										alignItems: 'center',
+										minHeight: 600,
+									}}
+								>
+									<Loading
+										name="persist_loading"
+										className="is-active"
+										style={{
+											display: 'block',
+											position: 'relative',
+										}}
+									/>
+								</div>
+							}
+						>
+							<Component {...pageProps} />
+						</PersistGate>
+					</Layout>
+				</ThemeProvider>
+			</Provider>
+		)
+	}
+}
+
+export default withRedux(makeStore)(appWithTranslation(MyApp))
